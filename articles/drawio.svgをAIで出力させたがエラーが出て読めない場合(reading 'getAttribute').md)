@@ -1,0 +1,89 @@
+---
+title: ".drawio.svgをAIで出力させたがエラーが出て読めない場合(reading 'getAttribute')"
+emoji: "📏"
+type: "tech"
+topics:
+  - "vscode"
+  - "drawio"
+  - "生成ai"
+published: true
+published_at: "2026-03-15 22:21"
+---
+
+## Intro
+既存のソースのクラス図やディレクトリ構成などを図で出力したい場合、copilotに任せて楽をしたい。更にsvgで出力できるなら、markdownと相性が良いので説明文も楽になるはず。
+
+なのでcopilotでディレクトリ等を読ませ、それをdraw.ioのフォーマットとし(XMLで図の出力ができる)、.drawio.svgの形式で出力すれば望み通りとなるはず。
+しかし一連の流れをGPT-4.1などで出力した場合、出力された.drawio.svgが読み込めずうまくいかない事がある
+
+## 作業環境
+- vscode + copilot (GPT-4.1)
+- vscode拡張機能 (Draw.io Integration: hediet.vscode-drawio: 1.9.0)
+
+## エラー内容
+作成された.drawio.svg読み込み時、
+`Could not add object for mxGeometry`
+`Cannot read properties of null (reading 'getAttribute')`
+等のエラーが出る
+
+## 原因
+先ず作成されたファイルが以下の形式となっている場合を対象とする
+```xml:failed.drawio.svg
+<?xml version="1.0" encoding="UTF-8"?>
+<svg ...>
+  <mxfile host="app.diagrams.net">
+    <diagram ...>
+      <mxGraphModel ...>
+        <root>
+          <mxCell id="0" />
+          <mxCell id="1" parent="0" />
+          ......
+        </root>
+      </mxGraphModel>
+    </diagram>
+  </mxfile>
+</svg>
+```
+これだとエラーが発生するし、svgファイルとして見ても空の図が表示されるだけとなる。
+
+参考に正しい.drawio形式を見ると、このファイルで言うmxfileの内容を保存しているようだ。
+そこで試しにmxfile以下を抜き出し保存してみると、draw.ioで読み込めるようになった。
+なのでmxfileの中身は正しそうで、svgタグの有無で挙動が変わりそう。
+```diff xml
+  <?xml version="1.0" encoding="UTF-8"?>
+- <svg ...>
+    <mxfile host="app.diagrams.net">
+      ...
+    </mxfile>
+- </svg>
+```
+
+## 対策
+mxfileの中身は、svgタグのcontent属性に入れても機能するもよう。なのでデータの埋め込み方法を変更してみた。
+```diff xml:success.drawio.svg
+ <?xml version="1.0" encoding="UTF-8"?>
++ <svg ... content="base64エンコードされたmxfileデータ">
+-   <mxfile>
+-   </mxfile>
+ </svg>
+```
+drawioで表示できた。
+
+しかしこれだけだと、drawioでは読み込めるがsvgとしては空、という状態なので、
+rectタグなども同じものを出力してやる必要がある。
+なので、プロンプトを調整してrectなども出力するよう指示を出す。(またはdrawioで再保存)
+
+## プロンプト
+```
+srcディレクトリの階層図を作成してください。
+
+* draw.ioで編集可能なSVG（.drawio.svg）で生成する
+* SVGタグのcontent属性にbase64エンコードしたdraw.io用XML（mxfileノード全体）を埋め込む
+* SVGタグには、SVGとして表示可能なタグも記載する(rectなど)
+```
+
+一応これで行けるが、プロンプトだけだとどうにも不安定。
+あまり図が大きいとbase64自体などで失敗してそう。
+安定させるにはSKILL.mdなどにした方が良いかも。
+
+というわけでSKILLも作成したので、別途載せます。
